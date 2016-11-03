@@ -18,6 +18,8 @@ import tqdm
 import traceback
 import warnings
 import time
+import csv
+import datetime
 
 warnings.filterwarnings('ignore')
 
@@ -40,7 +42,7 @@ class InstagramScraper:
         if dst is not None:
             self.dst = dst
         else:
-            self.dst = './' + self.username
+            self.dst = './photos/' + self.username
 
         try:
             os.makedirs(self.dst)
@@ -58,6 +60,15 @@ class InstagramScraper:
 
         if self.login_user and self.login_pass:
             self.login()
+
+        # Creating or opening results csv.
+        self.csv_file = open('results.csv', 'w')
+        fieldnames = ['Account', 'Likes', 'Posted', 'URL', 'Img', 'Hashtags']
+        self.writer = csv.DictWriter(self.csv_file, fieldnames=fieldnames)
+        self.writer.writeheader()
+    
+    def _epoch_to_string(self, epoch):
+        return datetime.datetime.fromtimestamp(float(epoch)).strftime('%Y-%m-%d_%H:%M:%S')
 
     def login(self):
         self.session.headers.update({'Referer': self.base_url})
@@ -86,21 +97,56 @@ class InstagramScraper:
 
     def scrape(self):
         """Crawls through and downloads user's media"""
+        
 
         # Crawls the media and sends it to the executor.
-        for item in tqdm.tqdm(self.media_gen(), desc="Searching for media", unit=" images"):
-            future = self.executor.submit(self.download, item, self.dst)
+        for item in tqdm.tqdm(self.media_gen(), desc="Searching for %s media" % self.username, unit=" images"):
+            # Creating the dict that countains the info that is going to be scraped
+            photo = {}
+            photo['Account'] = self.username
+            photo['Likes'] = item['likes']['count']
+            photo['Posted'] = self._epoch_to_string(item['created_time'])
+            photo['URL'] = item[item['type'] + 's']['standard_resolution']['url'].split('?')[0]
+            photo['Img'] = photo['URL'].split('/')[-1]
+            # Hashtags
+            photo['Hashtags'] = []
+            # We look into the caption
+            try:
+                hashtags_caption = re.findall('#[\w\b]+', item['caption']['text'])
+            except TypeError:
+                pass
+            else:
+                for hashtag in hashtags_caption:
+                    if hashtag not in photo['Hashtags']:
+                        photo['Hashtags'].append(hashtag.decode('utf8'))
+
+            # We look into the comments
+            if item['comments']['count'] > 0:
+                for comment in item['comments']['data']:
+                    hashtags = re.findall('#[\w\b]+', comment['text'])
+                    for hashtag in hashtags:
+                        if hashtag not in photo['Hashtags']:
+                            photo['Hashtags'].append(hashtag.decode('utf8'))
+            
+            # Joinin the hashtags with a comma
+            photo['Hashtags'] = ', '.join(photo['Hashtags'])
+
+            # We write the result of the photo to the csv file
+            self.writer.writerow(photo)
+
+            future = self.executor.submit(self.download, item, photo['URL'], photo['Img'], self.dst)
             self.future_to_item[future] = item
 
         # Displays the progress bar of completed downloads. Might not even pop up if all media is downloaded while
         # the above loop finishes.
         for future in tqdm.tqdm(concurrent.futures.as_completed(scraper.future_to_item), total=len(scraper.future_to_item),
-                                desc='Downloading'):
+                                desc='Downloading %s' % self.username):
             item = scraper.future_to_item[future]
 
             if future.exception() is not None:
                 print '%r generated an exception: %s' % (item['id'], future.exception())
-
+        
+        self.csv_file.close()
         scraper.logout()
 
 
@@ -108,6 +154,9 @@ class InstagramScraper:
         """Generator of all user's media"""
 
         media = self.fetch_media(max_id=None)
+        with open('test.json', 'w') as f:
+            json.dump(media['items'], f, indent=4)
+
         while True:
             for item in media['items']:
                 yield item
@@ -139,14 +188,14 @@ class InstagramScraper:
             self.logout()
             raise ValueError('User %s does not exist' % self.username)
 
-    def download(self, item, save_dir='./'):
+    def download(self, item, url, filename, save_dir='./'):
         """Downloads the media file"""
 
-        item['url'] = item[item['type'] + 's']['standard_resolution']['url'].split('?')[0]
+        item['url'] = url
         # remove dimensions to get largest image
         item['url'] = re.sub(r'/s\d{3,}x\d{3,}/', '/', item['url'])
 
-        base_name = item['url'].split('/')[-1]
+        base_name = filename
         file_path = os.path.join(save_dir, base_name)
 
         if not os.path.isfile(file_path):
@@ -178,6 +227,13 @@ if __name__ == '__main__':
     if (args.login_user and args.login_pass is None) or (args.login_user is None and args.login_pass):
         parser.print_help()
         raise ValueError('Must provide login user AND password')
-
-    scraper = InstagramScraper(args.username, args.login_user, args.login_pass, args.destination)
-    scraper.scrape()
+    if args.username == 'profiles':
+        with open('profiles.txt', 'r') as f:
+            usernames = [line.rstrip('\n') for line in f]
+            for username in usernames:
+                scraper = InstagramScraper(username, args.login_user, args.login_pass, args.destination)
+                scraper.scrape()
+                print('%s has been scraped' % username)
+    else:
+        scraper = InstagramScraper(args.username, args.login_user, args.login_pass, args.destination)
+        scraper.scrape()
