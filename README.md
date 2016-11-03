@@ -17,7 +17,28 @@ Usage
 -----
 To scrape a public user's media:
 ```bash
-$ python app.py <username>             
+$ python app.py -u <username>             
+```
+-----
+
+To scrape a list of user's media and the info associated with it:
+```bash
+$ python app.py -p path/to/profile_file.txt            
+```
+
+This will generate a csv file with info of the media with the following columns:
+Account = account name
+Likes = how many likes on this image
+Posted = date posted (ie, now, 1d, 3w)
+URL = direct url to img (on instagram)
+Img = name of the image when saved in a folder
+Hashtags = the hashtags from the firsts comments of this image
+
+The name of the deffault csv file is created with the current date with this format: results-year-month-day.csv.
+You can also specify the results output with:
+
+```bash
+$ python app.py -p /path/to/profile_txt_file -r /parh/to/csv_file            
 ```
 
 To specify the download destination:
@@ -27,10 +48,19 @@ $ python app.py <username> -d /path/to/destination
 
 To scrape a private user's media when you are an approved follower:
 ```bash
-$ python app.py <username> -u <your username> -p <your password>
+$ python app.py <username> -a <your username> -w <your password>
 ```
 
-By default media will be download to *`<current working directory>/<username>`*
+This are the deffault values for the instagramScraper:
+If nor a username or a profile file is introduced the usernames will be retrieved from *`<current working directory>/<profiles.txt>`*
+media folder is *`<current working directory>/<photos>/<username>`*
+csv file is *`<current working directory>/<results-year-month-day.csv>`*
+username and password is none (you will scrap as an anonymous user. You won't be capable of scraping private profiles)
+
+So if you just use the following command you will use the all the deffault values:
+```bash
+$ python app.py
+```
 
 Contributing
 ------------
