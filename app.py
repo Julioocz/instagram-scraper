@@ -21,6 +21,7 @@ import time
 import csv
 import datetime
 import shutil
+import humanize
 
 warnings.filterwarnings('ignore')
 
@@ -64,8 +65,10 @@ class InstagramScraper:
 
         
     def _epoch_to_string(self, epoch):
-        ''' Auxiliar function to transform the date time epoch from instagram'''
-        return datetime.datetime.fromtimestamp(float(epoch)).strftime('%Y-%m-%d_%H:%M:%S')
+        ''' Auxiliar function to transform the date time epoch from instagram and to humanize
+            the timedelta of it'''
+        time_delta = datetime.datetime.now() - datetime.datetime.fromtimestamp(float(epoch))
+        return humanize.naturaltime(time_delta)
 
     def login(self):
         self.session.headers.update({'Referer': self.base_url})
@@ -108,21 +111,21 @@ class InstagramScraper:
             photo['Hashtags'] = []
             # We look into the caption
             try:
-                hashtags_caption = re.findall('#[\w\b]+', item['caption']['text'])
+                hashtags_caption = re.findall('(#[^\s]+)', item['caption']['text'])
             except TypeError:
                 pass
             else:
                 for hashtag in hashtags_caption:
                     if hashtag not in photo['Hashtags']:
-                        photo['Hashtags'].append(hashtag.decode('utf8'))
+                        photo['Hashtags'].append(hashtag.encode('utf8'))
 
             # We look into the comments
             if item['comments']['count'] > 0:
                 for comment in item['comments']['data']:
-                    hashtags = re.findall('#[\w\b]+', comment['text'])
+                    hashtags = re.findall('(#[^\s]+)', comment['text'])
                     for hashtag in hashtags:
                         if hashtag not in photo['Hashtags']:
-                            photo['Hashtags'].append(hashtag.decode('utf8'))
+                            photo['Hashtags'].append(hashtag.encode('utf8'))
             
             # Joining the hashtags with a comma
             photo['Hashtags'] = ', '.join(photo['Hashtags'])
